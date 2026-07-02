@@ -1,0 +1,46 @@
+name: vciso-heavy
+# Once a day (13:30 UTC ~= just after Sydney midnight in winter): the heavier,
+# rate-limited maintenance - per-country victim history, seed sync, validation,
+# KEV refresh, member alerts, IOC enrichment, retention pruning.
+on:
+  schedule:
+    - cron: '30 13 * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: vciso-heavy
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout private code
+        uses: actions/checkout@v4
+        with:
+          repository: anilyellamati/vciso
+          ssh-key: ${{ secrets.PRIVATE_REPO_DEPLOY_KEY }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Write runtime env
+        run: |
+          cat > .env.local <<'EOF'
+          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ADMIN_API_SECRET=${{ secrets.ADMIN_API_SECRET }}
+          OTX_API_KEY=${{ secrets.OTX_API_KEY }}
+          RANSOMWARELIVE_API_KEY=${{ secrets.RANSOMWARELIVE_API_KEY }}
+          EOF
+
+      - name: Install deps
+        run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+
+      - name: Run daily heavy maintenance
+        env:
+          SITE_URL: https://vciso.au
+        run: node scripts/daily/run-step.mjs heavy

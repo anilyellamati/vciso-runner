@@ -1,0 +1,62 @@
+name: vciso-collector
+# Every 6 hours: Tor onion victim sweep + dark-web market/forum reachability.
+# Tor runs inside the runner (fail-closed: the collector aborts unless IsTor=true).
+# NOTE: running Tor in GitHub-hosted Actions is a gray area under GitHub's AUP and
+# CI egress can be flaky; if it gets throttled, move THIS workflow to a self-hosted
+# runner (a free Oracle Cloud VM) - the rest of the automation is unaffected.
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: vciso-collector
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout private code
+        uses: actions/checkout@v4
+        with:
+          repository: anilyellamati/vciso
+          ssh-key: ${{ secrets.PRIVATE_REPO_DEPLOY_KEY }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Tor and start it
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tor
+          sudo service tor start
+          echo "Waiting for Tor to bootstrap..."
+          for i in $(seq 1 30); do
+            if curl -s --socks5-hostname 127.0.0.1:9050 --max-time 15 https://check.torproject.org/api/ip | grep -q '"IsTor":true'; then
+              echo "Tor is up (IsTor=true)"; exit 0
+            fi
+            sleep 5
+          done
+          echo "Tor did not confirm IsTor=true in time"; exit 1
+
+      - name: Write runtime env
+        run: |
+          cat > .env.local <<'EOF'
+          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ADMIN_API_SECRET=${{ secrets.ADMIN_API_SECRET }}
+          EOF
+          cp .env.local collector/.env 2>/dev/null || true
+
+      - name: Install deps
+        run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+
+      - name: Run Tor collector + reachability
+        run: node scripts/daily/run-step.mjs collector

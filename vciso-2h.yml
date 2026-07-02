@@ -1,0 +1,49 @@
+name: vciso-2h
+# Every 2 hours: scrape -> batched AI summaries (only-new) -> apply -> ransomlook -> brief.
+# Keeps the live homepage/feed fresh. Times are UTC; 0 */2 lands on even hours in Sydney.
+# The 13:00 and 14:00 UTC entries are the AU-midnight rollover slots (AEDT / AEST).
+on:
+  schedule:
+    - cron: '0 */2 * * *'
+    - cron: '0 13 * * *'
+    - cron: '0 14 * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: vciso-2h
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout private code
+        uses: actions/checkout@v4
+        with:
+          repository: anilyellamati/vciso
+          ssh-key: ${{ secrets.PRIVATE_REPO_DEPLOY_KEY }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Write runtime env (gitignored, ephemeral runner only)
+        run: |
+          cat > .env.local <<'EOF'
+          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+          ADMIN_API_SECRET=${{ secrets.ADMIN_API_SECRET }}
+          OTX_API_KEY=${{ secrets.OTX_API_KEY }}
+          EOF
+
+      - name: Install deps
+        run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+
+      - name: Run 2-hourly pipeline
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SITE_URL: https://vciso.au
+        run: node scripts/daily/run-step.mjs light
