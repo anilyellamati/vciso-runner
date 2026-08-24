@@ -1,0 +1,42 @@
+name: keepalive
+
+# GitHub auto-disables SCHEDULED workflows after 60 days of no repo activity
+# (commits) - and scheduled runs themselves do NOT count as activity. This repo
+# only holds stable workflow YAML, so nobody commits to it and the vciso-2h /
+# vciso-heavy schedules would eventually be disabled.
+#
+# This job runs weekly and makes an empty commit whenever the repo has been idle
+# for >= 45 days, resetting the 60-day clock for ALL scheduled workflows. Fully
+# self-contained (no third-party action). Empty commits by GITHUB_TOKEN do not
+# trigger other workflow runs, so this is safe and loop-free.
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'   # Mondays 03:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Empty commit if the repo has been idle >= 45 days
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          last=$(git log -1 --format=%ct)
+          now=$(date +%s)
+          days=$(( (now - last) / 86400 ))
+          echo "Days since last commit: $days"
+          if [ "$days" -ge 45 ]; then
+            git commit --allow-empty -m "chore: keepalive (prevent scheduled-workflow auto-disable)"
+            git push
+            echo "Pushed keepalive commit."
+          else
+            echo "Repo active enough ($days d); no keepalive commit needed."
+          fi
