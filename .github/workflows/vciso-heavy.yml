@@ -1,7 +1,8 @@
 name: vciso-heavy
 # Once a day (13:30 UTC ~= just after Sydney midnight in winter): the heavier,
 # rate-limited maintenance - per-country victim history, seed sync, validation,
-# KEV refresh, member alerts, IOC enrichment, retention pruning.
+# vendor-risk rescore + incremental news-victim extraction (cheap Haiku) + watchlist
+# alerts, KEV refresh, member alerts, IOC enrichment, retention pruning.
 on:
   schedule:
     - cron: '30 13 * * *'
@@ -32,6 +33,7 @@ jobs:
           cat > .env.local <<'EOF'
           NEXT_PUBLIC_SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
           ADMIN_API_SECRET=${{ secrets.ADMIN_API_SECRET }}
           OTX_API_KEY=${{ secrets.OTX_API_KEY }}
           RANSOMWARELIVE_API_KEY=${{ secrets.RANSOMWARELIVE_API_KEY }}
